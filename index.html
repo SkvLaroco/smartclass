@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartClass — Classroom Analytics</title>
+  <!-- Third-party scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"
+          onerror="var s=document.createElement('script');s.src='https://unpkg.com/@vladmandic/face-api@1.7.13/dist/face-api.js';document.head.appendChild(s);"></script>
+  <!-- MediaPipe Hands — loaded lazily by gesture.js when camera starts -->
+  <!-- jsPDF — loaded lazily by summarizer.js when PDF download is triggered -->
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+/* ════════════════════════════════════════════
+   LOGIN — dual-panel layout
+════════════════════════════════════════════ */
+#login-screen{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+.login-wrap{display:flex;width:880px;min-height:520px;border-radius:22px;overflow:hidden;box-shadow:0 24px 72px rgba(0,0,0,.13);border:1.5px solid var(--border)}
+/* Left branding */
+.login-panel-left{width:340px;flex-shrink:0;background:linear-gradient(145deg,#3b5bdb 0%,#5b3de8 100%);color:#fff;padding:44px 36px;display:flex;flex-direction:column}
+.lp-logo{font-size:52px;margin-bottom:10px}
+.lp-name{font-size:28px;font-weight:800;letter-spacing:-.02em}
+.lp-tagline{font-size:13px;opacity:.75;margin-top:4px;margin-bottom:32px}
+.lp-features{display:flex;flex-direction:column;gap:12px;flex:1}
+.lp-feat{font-size:13px;font-weight:600;opacity:.9;display:flex;align-items:center;gap:8px}
+.lp-version{font-size:11px;opacity:.5;margin-top:24px}
+/* Right form */
+.login-panel-right{flex:1;background:var(--bg-2);display:flex;align-items:center;justify-content:center;padding:44px 40px}
+.login-card2{width:100%}
+.lc-title{font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px}
+.lc-sub{font-size:13px;color:var(--text-3);margin-bottom:28px}
+.login-field{margin-bottom:14px}
+.login-field label{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.login-field input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:var(--font);font-size:14px;background:var(--bg);color:var(--text);outline:none;transition:border .18s;box-sizing:border-box}
+.login-field input:focus{border-color:var(--brand)}
+.login-btn{width:100%;padding:13px;background:var(--brand);color:#fff;border:none;border-radius:10px;font-family:var(--font);font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;transition:background .18s}
+.login-btn:hover{background:var(--brand-h)}
+.login-btn:disabled{opacity:.6;cursor:not-allowed}
+.login-err{color:var(--red);font-size:13px;margin-top:10px;display:none}
+.login-hint{margin-top:20px;padding:14px;background:var(--bg-3);border-radius:10px;display:flex;flex-direction:column;gap:8px}
+.lh-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-3)}
+.lh-role{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700}
+.lh-admin{background:var(--purple-dim);color:var(--purple)}
+.lh-prof{background:var(--brand-dim);color:var(--brand)}
+.lh-stu{background:var(--green-dim);color:var(--green)}
+@media(max-width:700px){.login-wrap{flex-direction:column;width:95vw;min-height:unset}.login-panel-left{width:auto;padding:28px 24px}.lp-features{display:none}.login-panel-right{padding:24px}}
+
+/* ════════════════════════════════════════════
+   TEACHER/ADMIN SHARED STYLES
+════════════════════════════════════════════ */
+.modal-wide{max-width:680px}
+.section-list{display:flex;flex-direction:column;gap:10px}
+.section-item{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px}
+.section-item-name{flex:1;font-weight:600;font-size:14px}
+.section-item-count{font-size:12px;color:var(--text-3);font-family:var(--mono)}
+.page#page-summarizer .sum-mode-tabs{display:flex;gap:8px;margin-bottom:20px}
+.sum-tab{padding:9px 18px;border-radius:10px;font-size:13px;font-weight:600;border:1.5px solid var(--border);background:var(--bg-2);color:var(--text-3);cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:7px}
+.sum-tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.sum-panel{display:none}.sum-panel.active{display:block}
+.sum-result{margin-top:18px;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:20px;font-size:14px;line-height:1.75;color:var(--text);white-space:pre-wrap;display:none}
+.sum-result.show{display:block}
+.mic-btn{width:80px;height:80px;border-radius:50%;border:none;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin:0 auto;transition:all .2s;background:var(--brand);color:#fff;box-shadow:0 4px 18px rgba(59,91,219,.35)}
+.mic-btn.recording{background:var(--red);animation:micPulse 1s ease infinite;box-shadow:0 4px 24px rgba(201,42,42,.45)}
+@keyframes micPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.mic-status{text-align:center;margin-top:14px;font-size:14px;font-weight:600;color:var(--text-3)}
+.transcript-box{margin-top:16px;min-height:80px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:14px;font-size:13px;color:var(--text-2);line-height:1.6;font-style:italic}
+.sum-loading{display:none;align-items:center;gap:12px;padding:16px;background:var(--brand-dim);border-radius:10px;margin-top:14px;color:var(--brand);font-size:13px;font-weight:600}
+.sum-loading.show{display:flex}
+.sum-spinner{width:18px;height:18px;border:2.5px solid rgba(59,91,219,.25);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.file-drop-zone{border:2px dashed var(--border);border-radius:12px;padding:36px;text-align:center;cursor:pointer;transition:all .18s;background:var(--bg)}
+.file-drop-zone:hover,.file-drop-zone.dragover{border-color:var(--brand);background:var(--brand-dim)}
+.file-drop-zone .drop-icon{font-size:36px;margin-bottom:10px}
+.file-drop-zone .drop-txt{font-size:14px;font-weight:600;color:var(--text-2)}
+.file-drop-zone .drop-sub{font-size:12px;color:var(--text-3);margin-top:4px}
+.sent-meter{display:flex;align-items:center;gap:10px;margin-top:10px}
+.sent-meter-bar{flex:1;height:8px;background:var(--bg-3);border-radius:99px;overflow:hidden}
+.sent-meter-fill{height:100%;border-radius:99px;transition:width .4s}
+.sent-keywords{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sent-kw{padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600}
+.sent-kw.pos{background:var(--green-dim);color:var(--green)}
+.sent-kw.neg{background:var(--red-dim);color:var(--red)}
+.capture-strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.capture-thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:2px solid var(--border-2);cursor:pointer;transition:all .18s}
+.capture-thumb.ok{border-color:var(--green)}
+.capture-thumb:hover{opacity:.8;transform:scale(.97)}
+.capture-add{width:54px;height:54px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--text-3);cursor:pointer;transition:all .18s}
+.capture-add:hover{border-color:var(--brand);color:var(--brand)}
+.role-badge{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.04em}
+.role-badge.admin{background:var(--purple-dim);color:var(--purple)}
+.role-badge.prof{background:var(--brand-dim);color:var(--brand)}
+
+/* ════════════════════════════════════════════
+   STUDENT PORTAL
+════════════════════════════════════════════ */
+#student-portal{min-height:100vh;background:var(--bg);font-family:var(--font);position:relative;z-index:1}
+/* Nav */
+.sp-nav{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--bg-2);border-bottom:1.5px solid var(--border);position:sticky;top:0;z-index:200;gap:12px}
+.sp-brand{font-size:17px;font-weight:800;color:var(--brand);display:flex;align-items:center;gap:8px;white-space:nowrap}
+.sp-brand-tag{font-size:10px;font-weight:700;padding:2px 7px;background:var(--green-dim);color:var(--green);border-radius:99px;letter-spacing:.04em}
+.sp-nav-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+.sp-user-chip{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg-3);border-radius:10px}
+.sp-user-ava{font-size:22px;line-height:1}
+.sp-user-name{font-size:13px;font-weight:700;color:var(--text);line-height:1}
+.sp-user-meta{font-size:11px;color:var(--text-3);margin-top:1px}
+.sp-btn-logout{padding:7px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text-2);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .18s}
+.sp-btn-logout:hover{background:var(--red-dim);color:var(--red);border-color:var(--red)}
+/* Hero */
+.sp-hero{background:linear-gradient(135deg,#3b5bdb 0%,#5b3de8 100%);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.sp-hero-greet{font-size:19px;font-weight:800}
+.sp-hero-sub{font-size:12.5px;opacity:.8;margin-top:3px}
+.sp-hero-clock{font-family:var(--mono);font-size:19px;font-weight:600;opacity:.9;white-space:nowrap}
+/* Tab bar */
+.sp-tabbar{display:flex;background:var(--bg-2);border-bottom:1.5px solid var(--border);padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sp-tab{padding:13px 16px;border:none;background:transparent;font-family:var(--font);font-size:13px;font-weight:600;color:var(--text-3);cursor:pointer;border-bottom:2.5px solid transparent;transition:all .18s;white-space:nowrap}
+.sp-tab:hover{color:var(--text)}
+.sp-tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+/* Content area */
+.sp-content{padding:22px 24px;max-width:960px;margin:0 auto}
+.sp-loading{display:flex;align-items:center;gap:12px;padding:48px;justify-content:center;color:var(--text-3)}
+.sp-spin{width:20px;height:20px;border:2.5px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+/* Shared card */
+.sp-card{background:var(--bg-2);border:1.5px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+/* Section header */
+.sp-sh{font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px}
+/* Stat grid */
+.sp-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.sp-stat{text-align:center;padding:18px 14px;transition:transform .18s,box-shadow .18s}
+.sp-stat:hover{transform:translateY(-2px);box-shadow:var(--sh-md)}
+/* Announcements */
+.sp-ann-list{display:flex;flex-direction:column;gap:10px}
+.sp-ann{display:flex;gap:12px;padding:14px 16px;border-radius:12px;border:1.5px solid transparent;align-items:flex-start}
+/* Note card */
+.sp-note-card{background:var(--bg-2);border:1.5px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+.sp-note-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.sp-note-title{font-size:14px;font-weight:800;color:var(--text)}
+.sp-note-meta{font-size:11px;color:var(--text-3);margin-top:3px}
+.sp-note-body{font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:10px}
+.sp-note-pts{padding-left:18px;color:var(--text-2);font-size:13px;line-height:1.7;margin-bottom:10px}
+.sp-terms{display:flex;flex-wrap:wrap;gap:5px}
+.sp-term{display:inline-block;padding:3px 10px;border-radius:99px;background:var(--brand-dim);color:var(--brand);font-size:12px;font-weight:600}
+.sp-btn-dl{padding:7px 14px;border-radius:8px;border:1.5px solid var(--brand);background:var(--brand-dim);color:var(--brand);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .18s;flex-shrink:0}
+.sp-btn-dl:hover{background:var(--brand);color:#fff}
+/* Summarizer */
+.sp-sum-tabs{display:flex;gap:8px;margin-bottom:16px}
+.sp-sum-tab{padding:8px 18px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-2);color:var(--text-3);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .18s}
+.sp-sum-tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.sp-sum-panel{margin-bottom:8px}
+.sp-drop-zone{border:2px dashed var(--border);border-radius:12px;padding:36px;text-align:center;cursor:pointer;transition:all .18s;background:var(--bg)}
+.sp-drop-zone:hover,.sp-drop-zone.hover{border-color:var(--brand);background:var(--brand-dim)}
+.sp-sum-loading{display:none;align-items:center;gap:10px;padding:14px;background:var(--brand-dim);border-radius:10px;margin-top:10px;color:var(--brand);font-size:13px;font-weight:600}
+/* Feedback */
+.sp-mood-row{display:flex;gap:10px;flex-wrap:wrap}
+.sp-mood{display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 18px;border-radius:12px;border:2px solid var(--border);background:var(--bg-2);font-family:var(--font);font-size:22px;cursor:pointer;transition:all .18s;min-width:72px}
+.sp-mood span{font-size:12px;font-weight:600;color:var(--text-3)}
+.sp-mood:hover,.sp-mood.sel{border-color:var(--brand);background:var(--brand-dim)}
+.sp-mood.sel span{color:var(--brand)}
+/* Attendance */
+.sp-att-summary{margin-bottom:16px}
+.sp-tbl{width:100%;border-collapse:collapse}
+.sp-tbl thead tr{background:var(--bg-3)}
+.sp-tbl th{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;text-align:left;border-bottom:1.5px solid var(--border)}
+.sp-tbl td{padding:10px 14px;font-size:13px;border-bottom:1px solid var(--border-2)}
+.sp-tbl tr:last-child td{border-bottom:none}
+.sp-tbl tr:hover td{background:var(--bg-3)}
+/* Status badges */
+.sp-badge-g{display:inline-block;padding:3px 10px;border-radius:99px;background:var(--green-dim);color:var(--green);font-size:11px;font-weight:700}
+.sp-badge-o{display:inline-block;padding:3px 10px;border-radius:99px;background:var(--orange-dim);color:var(--orange);font-size:11px;font-weight:700}
+.sp-badge-r{display:inline-block;padding:3px 10px;border-radius:99px;background:var(--red-dim);color:var(--red);font-size:11px;font-weight:700}
+.sp-badge-n{display:inline-block;padding:3px 10px;border-radius:99px;background:var(--bg-3);color:var(--text-3);font-size:11px;font-weight:700}
+/* Alert banners */
+.sp-alert{padding:12px 16px;border-radius:10px;font-size:13px;font-weight:600;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start}
+.sp-alert-warn{background:#fff8e8;color:#e8590c;border:1.5px solid #ffd8a8}
+.sp-alert-ok{background:#ebfbee;color:#2f9e44;border:1.5px solid #b2f2bb}
+/* Profile */
+.sp-profile-top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.sp-profile-photo{width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--brand);flex-shrink:0}
+.sp-profile-ava{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--purple));display:flex;align-items:center;justify-content:center;font-size:36px;flex-shrink:0}
+.sp-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px}
+.sp-detail{background:var(--bg-2);border:1.5px solid var(--border);border-radius:10px;padding:13px 14px}
+.sp-detail-lbl{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.sp-detail-val{font-size:14px;font-weight:700;color:var(--text)}
+/* Form */
+.sp-form-row{margin-bottom:14px}
+.sp-form-row label{font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px}
+.sp-input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:var(--font);font-size:14px;background:var(--bg);color:var(--text);outline:none;transition:border .18s;box-sizing:border-box}
+.sp-input:focus{border-color:var(--brand)}
+/* Buttons */
+.sp-btn-primary{padding:11px 22px;background:var(--brand);color:#fff;border:none;border-radius:10px;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:background .18s}
+.sp-btn-primary:hover{background:var(--brand-h)}
+/* Empty states */
+.sp-empty{padding:28px;text-align:center;color:var(--text-3);font-size:13px}
+.sp-empty-page{display:flex;flex-direction:column;align-items:center;gap:12px;padding:72px 20px;text-align:center}
+  </style>
+</head>
+<body>
+
+<!-- ═══ LOGIN SCREEN ═══ -->
+<div id="login-screen">
+  <div class="login-wrap">
+
+    <!-- Left: branding panel -->
+    <div class="login-panel-left">
+      <div class="lp-logo">🎓</div>
+      <div class="lp-name">SmartClass</div>
+      <div class="lp-tagline">Classroom Analytics System</div>
+      <div class="lp-features">
+        <div class="lp-feat">📊 Live attendance tracking</div>
+        <div class="lp-feat">✋ Gesture detection AI</div>
+        <div class="lp-feat">📝 Lesson summarizer</div>
+        <div class="lp-feat">👩‍🎓 Student academic portal</div>
+      </div>
+      <div class="lp-version">v2.1 · SmartClass Analytics</div>
+    </div>
+
+    <!-- Right: login form -->
+    <div class="login-panel-right">
+      <div class="login-card2">
+        <div class="lc-title">Sign In</div>
+        <div class="lc-sub">Your role is detected automatically</div>
+
+        <div class="login-field">
+          <label>Username</label>
+          <input id="login-user" placeholder="Enter your username" autocomplete="username">
+        </div>
+        <div class="login-field">
+          <label>Password</label>
+          <input id="login-pass" type="password" placeholder="Enter your password" autocomplete="current-password">
+        </div>
+
+        <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In →</button>
+        <div class="login-err" id="login-err">Invalid username or password.</div>
+
+        <div class="login-hint">
+          <div class="lh-row"><span class="lh-role lh-admin">🛡 Admin</span><span>admin / admin123</span></div>
+          <div class="lh-row"><span class="lh-role lh-prof">👩‍🏫 Professor</span><span>prof / prof123</span></div>
+          <div class="lh-row"><span class="lh-role lh-stu">👩‍🎓 Student</span><span>student1 / student123</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TOAST ═══ -->
+<div class="toast" id="toast-container"></div>
+
+<!-- ═══ STUDENT PORTAL ═══ -->
+<div id="student-portal" style="display:none"></div>
+
+<!-- ═══ ENROLL MODAL ═══ -->
+<div class="modal-backdrop" id="enroll-modal">
+  <div class="modal" style="position:relative;max-width:720px">
+    <button class="modal-close" onclick="closeEnrollModal()">✕</button>
+    <div class="modal-title">📸 Enroll New Student</div>
+    <div class="modal-sub">Capture at least <strong>30 photos</strong> from different angles — front, left, right, up, down — for accurate recognition.</div>
+    <div class="steps">
+      <div class="step active" id="step-1"><div class="step-num">1</div><div class="step-lbl">Student Info</div></div>
+      <div class="step" id="step-2"><div class="step-num">2</div><div class="step-lbl">Capture Face</div></div>
+      <div class="step" id="step-3"><div class="step-num">3</div><div class="step-lbl">Train Model</div></div>
+    </div>
+    <!-- Step 1 -->
+    <div id="enroll-step-1">
+      <div class="g2" style="gap:14px;margin-bottom:14px">
+        <div class="field"><label>Full Name *</label><input id="enroll-name" placeholder="e.g. Maria Santos" autocomplete="off"></div>
+        <div class="field"><label>Student ID *</label><input id="enroll-sid" placeholder="e.g. 2024-0001" autocomplete="off"></div>
+      </div>
+      <div class="g2" style="gap:14px;margin-bottom:22px">
+        <div class="field"><label>Section *</label><select id="enroll-section"><option value="SEC-001">CS301-A</option></select></div>
+        <div class="field"><label>Year Level</label>
+          <select id="enroll-year"><option>1st Year</option><option>2nd Year</option><option selected>3rd Year</option><option>4th Year</option></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="enrollStep2()">Next: Capture Face →</button>
+    </div>
+    <!-- Step 2 -->
+    <div id="enroll-step-2" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div>
+          <div class="enroll-cam-wrap" id="enroll-cam-wrap">
+            <video id="enroll-vid" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
+            <canvas id="enroll-canvas" class="enroll-canvas"></canvas>
+            <div class="cam-bar" style="top:8px">
+              <div class="cam-bar-label" id="enroll-face-status" style="color:#fc8181">
+                <div class="cam-rec"></div>
+                <span id="enroll-face-txt">Scanning for face…</span>
+              </div>
+              <div class="cam-conf" id="enroll-conf-txt"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary btn-sm" id="btn-capture" onclick="captureFrame()" style="flex:1;justify-content:center" disabled>📸 Capture Photo</button>
+            <button class="btn btn-success btn-sm" id="btn-auto-capture" onclick="toggleAutoCapture()" style="flex:1;justify-content:center">⚡ Auto-Capture</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearCaptures()">🗑</button>
+          </div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:8px;line-height:1.5">
+            💡 <strong>Auto-Capture</strong> takes a photo every 1.5s automatically.<br>
+            Move your head <strong>front · left · right · up · down</strong> for best accuracy.
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+            Captured Photos <span id="capture-count-lbl" style="color:var(--brand)">(0 / 30)</span>
+          </div>
+          <div class="capture-strip" id="capture-strip"><div class="capture-add" onclick="captureFrame()">+</div></div>
+          <div style="margin-top:14px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:12px;font-weight:600;color:var(--text-2)">Progress to 30 photos</span>
+              <span style="font-size:12px;color:var(--green);font-weight:600" id="capture-ok-lbl">0 faces detected</span>
+            </div>
+            <div class="prog"><div class="prog-fill" id="capture-prog" style="width:0%;background:var(--green)"></div></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:4px" id="capture-tip-lbl">Capture at least 30 photos for best recognition accuracy</div>
+          </div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-primary" id="btn-to-train" style="justify-content:center;width:100%" onclick="enrollStep3()" disabled>Train Model →</button>
+            <button class="btn btn-ghost btn-sm" style="justify-content:center" onclick="enrollStep1()">← Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Step 3 -->
+    <div id="enroll-step-3" style="display:none">
+      <div class="train-ring-wrap">
+        <div class="train-ring">
+          <svg viewBox="0 0 96 96"><circle class="bg" r="40" cx="48" cy="48"/><circle class="fg" r="40" cx="48" cy="48" id="train-arc"/></svg>
+          <div class="train-pct" id="train-pct">0%</div>
+        </div>
+        <div class="train-label" id="train-label">Extracting face descriptors…</div>
+      </div>
+      <div id="train-result" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SECTIONS MODAL ═══ -->
+<div class="modal-backdrop" id="sections-modal">
+  <div class="modal modal-wide" style="position:relative">
+    <button class="modal-close" onclick="closeSectionsModal()">✕</button>
+    <div class="modal-title">📚 Manage Sections</div>
+    <div class="modal-sub">Create and manage class sections. Each section has its own enrolled student roster.</div>
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      <input id="new-section-name" class="search-input" placeholder="Section name, e.g. CS301-A" style="flex:1">
+      <input id="new-section-subject" class="search-input" placeholder="Subject, e.g. Data Structures" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addSection()">+ Add Section</button>
+    </div>
+    <div class="section-list" id="section-list"></div>
+  </div>
+</div>
+
+<!-- ═══ SIDEBAR ═══ -->
+<aside class="sidebar" id="app-sidebar" style="display:none">
+  <div class="sidebar-logo">
+    <div class="logo-wrap">
+      <div class="logo-icon">🎓</div>
+      <div><div class="logo-name">SmartClass</div><div class="logo-sub" id="sidebar-section-label">Analytics System v2.0</div></div>
+    </div>
+  </div>
+  <div class="session-banner" id="session-banner">
+    <div class="sdot"></div><div class="sb-text">Session Live</div>
+    <div class="sb-time" id="sb-timer">00:00:00</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>Dashboard</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">AI Modules</div>
+    <div class="nav-item" data-page="enrollment"><span class="nav-icon">🪪</span>Face Enrollment<span class="nav-badge-count" id="enrolled-count-badge">0</span></div>
+    <div class="nav-item" data-page="attendance"><span class="nav-icon">👤</span>Attendance<span class="nav-badge">AI</span></div>
+    <div class="nav-item" data-page="gesture"><span class="nav-icon">✋</span>Gesture Detection<span class="nav-badge">AI</span></div>
+    <div class="nav-item" data-page="sentiment"><span class="nav-icon">💬</span>Sentiment Analysis<span class="nav-badge">AI</span></div>
+    <div class="nav-item" data-page="summarizer"><span class="nav-icon">📝</span>Lesson Summarizer<span class="nav-badge">AI</span></div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Reports</div>
+    <div class="nav-item" data-page="analytics"><span class="nav-icon">📈</span>Analytics Report</div>
+  </div>
+  <div class="nav-section" id="admin-nav-section">
+    <div class="nav-label">Admin</div>
+    <div class="nav-item" id="nav-sections" onclick="openSectionsModal()"><span class="nav-icon">📚</span>Manage Sections</div>
+    <div class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span>Settings</div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="user-block">
+      <div class="user-avatar" id="sidebar-avatar">👩‍🏫</div>
+      <div>
+        <div class="user-name" id="sidebar-username">Prof. Santos</div>
+        <div class="user-role" id="sidebar-role">Instructor · CS Dept.</div>
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;justify-content:center;font-size:12px" onclick="doLogout()">🚪 Sign Out</button>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══ -->
+<main class="main-content" id="app-main" style="display:none">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="tb-page" id="tb-page">Dashboard</span>
+      <span class="tb-sep">›</span>
+      <span class="tb-sub" id="tb-sub">CS301 – Data Structures</span>
+    </div>
+    <div class="topbar-right">
+      <div class="class-chip" id="active-section-chip">📚 No Section Selected</div>
+      <div class="clock-display" id="clock">00:00:00</div>
+      <button class="btn btn-primary" id="session-btn">▶ Start Session</button>
+    </div>
+  </div>
+  <!-- FEATURE TAB BAR -->
+  <div class="feature-tabbar" id="feature-tabbar">
+    <div class="ftab active" data-page="dashboard"><span class="ftab-icon">📊</span>Dashboard</div>
+    <div class="ftab" data-page="enrollment"><span class="ftab-icon">🪪</span>Enrollment<span class="ftab-badge" id="ftab-enrolled-count">0</span></div>
+    <div class="ftab" data-page="attendance"><span class="ftab-icon">👤</span>Attendance<span class="ftab-badge-ai">AI</span></div>
+    <div class="ftab" data-page="gesture"><span class="ftab-icon">✋</span>Gesture<span class="ftab-badge-ai">AI</span></div>
+    <div class="ftab" data-page="sentiment"><span class="ftab-icon">💬</span>Sentiment<span class="ftab-badge-ai">AI</span></div>
+    <div class="ftab" data-page="summarizer"><span class="ftab-icon">📝</span>Summarizer<span class="ftab-badge-ai">AI</span></div>
+    <div class="ftab" data-page="analytics"><span class="ftab-icon">📈</span>Analytics</div>
+    <div class="ftab" data-page="settings"><span class="ftab-icon">⚙️</span>Settings</div>
+  </div>
+
+  <!-- ══ DASHBOARD ══ -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title" id="dash-greeting">Good morning 👋</div><div class="page-desc" id="dash-desc">Real-time analytics for today's class</div></div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="navigate('analytics')">📈 Full Report</button>
+          <button class="btn btn-primary btn-sm" onclick="navigate('attendance')">👤 Take Attendance</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card sc-blue"><div class="stat-top"><div class="stat-icon">👥</div><span class="stat-trend">of <span id="stat-total">0</span></span></div><div class="stat-val" id="stat-present">0</div><div class="stat-lbl">Students Present</div></div>
+        <div class="stat-card sc-orange"><div class="stat-top"><div class="stat-icon">🚫</div><span class="stat-trend" id="stat-pct">0%</span></div><div class="stat-val" id="stat-absent">0</div><div class="stat-lbl">Students Absent</div></div>
+        <div class="stat-card sc-green"><div class="stat-top"><div class="stat-icon">📈</div><span class="stat-trend">↑ Live</span></div><div class="stat-val" id="stat-engagement">—</div><div class="stat-lbl">Avg. Engagement</div></div>
+        <div class="stat-card sc-purple"><div class="stat-top"><div class="stat-icon">✋</div><span class="stat-trend">Session</span></div><div class="stat-val" id="stat-gestures">0</div><div class="stat-lbl">Gestures Detected</div></div>
+      </div>
+      <div class="g-main mb-5">
+        <div class="card"><div class="card-header"><div><div class="card-title">Session Attendance</div><div class="card-sub">Recent sessions</div></div></div><div class="card-body chart-wrap" style="height:230px"><canvas id="chart-att"></canvas></div></div>
+        <div class="card"><div class="card-header"><div><div class="card-title">Emotion Distribution</div><div class="card-sub">Today's session · Live</div></div></div><div class="card-body chart-wrap" style="height:230px"><canvas id="chart-emotion"></canvas></div></div>
+      </div>
+      <div class="g-main">
+        <div class="card"><div class="card-header"><div><div class="card-title">Engagement Trend</div><div class="card-sub">Live · Current session</div></div></div><div class="card-body chart-wrap" style="height:200px"><canvas id="chart-eng"></canvas></div></div>
+        <div class="card"><div class="card-header"><div class="card-title">Live Activity</div><div class="card-sub">System events</div></div><div class="card-body"><div class="feed" id="activity-feed"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ENROLLMENT ══ -->
+  <div class="page" id="page-enrollment">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Face Enrollment</div><div class="page-desc">Register student faces using webcam. Capture 30+ photos for best recognition accuracy.</div></div>
+        <div class="page-actions">
+          <div class="field" style="margin:0"><select id="filter-section-enroll" onchange="renderEnrolledGrid()" style="font-size:13px;padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-2);color:var(--text);font-family:var(--font)"><option value="">All Sections</option></select></div>
+          <button class="btn btn-primary" onclick="openEnrollModal()">+ Enroll Student</button>
+        </div>
+      </div>
+      <div id="model-banner" class="model-banner hidden"></div>
+      <div class="card mb-5">
+        <div class="card-header">
+          <div><div class="card-title">Enrolled Students</div><div class="card-sub" id="enroll-model-status">Loading face recognition models…</div></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="search-input" id="enroll-search" placeholder="🔍  Search…" oninput="renderEnrolledGrid()">
+            <button class="btn btn-ghost btn-sm" onclick="clearAllEnrolled()" style="color:var(--red)">🗑 Clear All</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="stats-mini" style="margin-bottom:18px">
+            <div class="stat-mini"><span id="enroll-stat-count" style="font-size:22px;font-weight:800;color:var(--brand)">0</span><span style="font-size:12px;color:var(--text-3)">Enrolled</span></div>
+            <div class="stat-mini"><span id="enroll-stat-trained" style="font-size:22px;font-weight:800;color:var(--green)">0</span><span style="font-size:12px;color:var(--text-3)">Trained</span></div>
+          </div>
+          <div class="enrolled-grid" id="enrolled-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ATTENDANCE ══ -->
+  <div class="page" id="page-attendance">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Attendance</div><div class="page-desc">AI-powered face recognition marks students present automatically.</div></div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="markAllPresent()">✅ Mark All Present</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetAttendance()">🔄 Reset</button>
+          <button class="btn btn-primary btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+        </div>
+      </div>
+      <div class="alert-info mb-5" id="att-no-students-banner" style="display:none">
+        <span style="font-size:18px">⚠️</span>
+        <span>No students enrolled yet. <a href="#" onclick="navigate('enrollment');return false">Go to Enrollment →</a></span>
+      </div>
+      <div class="alert-info mb-5">
+        <span style="font-size:18px">💡</span>
+        <span>Click <strong>Start Camera</strong> to begin. The AI will recognize enrolled students and mark them present automatically.</span>
+      </div>
+      <div class="g-cam mb-5">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Live Camera Feed</div><div class="card-sub" id="att-cam-sub">Face recognition · SSD MobileNet + FaceNet128</div></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-success btn-sm" id="btn-start-face">▶ Start Camera</button>
+              <button class="btn btn-danger btn-sm" id="btn-stop-face">⏹ Stop</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="cam-wrap" id="face-cam-wrap" style="aspect-ratio:16/9;position:relative">
+              <video id="face-vid" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
+              <canvas id="recog-canvas" class="recog-overlay-canvas"></canvas>
+              <div class="cam-overlay" id="face-overlay">
+                <div class="cam-corner tl"></div><div class="cam-corner tr"></div>
+                <div class="cam-corner bl"></div><div class="cam-corner br"></div>
+                <div class="cam-bar">
+                  <div class="cam-bar-label"><div class="cam-rec"></div>FACE RECOGNITION ACTIVE</div>
+                  <div class="cam-conf" id="att-model-conf">Loading models…</div>
+                </div>
+                <div class="scan-line" id="face-scan"></div>
+              </div>
+            </div>
+            <div class="cam-stats">
+              <div class="cam-stat"><div class="cam-stat-val" id="recog-cnt">0</div><div class="cam-stat-lbl">Recognized</div></div>
+              <div class="cam-stat"><div class="cam-stat-val" style="color:var(--green)" id="recog-conf-avg">—</div><div class="cam-stat-lbl">Avg Confidence</div></div>
+              <div class="cam-stat"><div class="cam-stat-val" style="color:var(--orange)" id="recog-fps">—</div><div class="cam-stat-lbl">FPS</div></div>
+              <div class="cam-stat"><div class="cam-stat-val" style="color:var(--purple)" id="recog-faces">0</div><div class="cam-stat-lbl">Faces Detected</div></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Session Summary</div></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+              <div><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:600;color:var(--text-2)">Present</span><span style="font-size:13px;font-weight:700;color:var(--green)" id="stat-present-s">0</span></div><div class="prog"><div class="prog-fill" id="prog-present" style="width:0%;background:var(--green)"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:600;color:var(--text-2)">Absent</span><span style="font-size:13px;font-weight:700;color:var(--red)" id="stat-absent-s">0</span></div><div class="prog"><div class="prog-fill" id="prog-absent" style="width:0%;background:var(--red)"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:600;color:var(--text-2)">Total</span><span style="font-size:13px;font-weight:700;color:var(--text)" id="stat-total-s">0</span></div><div class="prog"><div class="prog-fill" style="width:100%;background:var(--border)"></div></div></div>
+            </div>
+          </div>
+          <div class="card" style="flex:1">
+            <div class="card-header"><div class="card-title">Recognition Log</div><div class="card-sub">Real-time matches</div></div>
+            <div class="card-body" style="padding:0 22px 16px;max-height:220px;overflow-y:auto">
+              <div id="recog-log" style="display:flex;flex-direction:column;gap:0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Student Attendance List</div><div class="card-sub" id="att-table-sub">Enrolled students</div></div>
+          <div style="display:flex;gap:8px">
+            <select id="filter-section-att" onchange="syncStudentsFromEnrolled()" style="font-size:13px;padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-2);color:var(--text);font-family:var(--font)"><option value="">All Sections</option></select>
+            <input class="search-input" id="att-search" type="text" placeholder="🔍  Search…">
+          </div>
+        </div>
+        <div class="tbl-scroll">
+          <table><thead><tr><th>Student</th><th>Section</th><th>Attendance</th><th>Emotion</th><th>Confidence</th><th>Override</th></tr></thead>
+          <tbody id="att-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ GESTURE ══ -->
+  <div class="page" id="page-gesture">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Gesture Detection</div><div class="page-desc">Classroom-wide gesture tracking. Start the camera to watch the full class — log gestures when you observe them.</div></div>
+      </div>
+      <div class="alert-info mb-5">
+        <span style="font-size:18px">ℹ️</span>
+        <span><strong>Deep Learning:</strong> MediaPipe Hands tracks <strong>all students simultaneously</strong>. Gestures are auto-detected and logged. Select a student in the dropdown to override the auto-identified person, or use the manual buttons below.</span>
+      </div>
+      <div class="g-cam mb-5">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Live Classroom Feed</div><div class="card-sub">Teacher-logged gesture tracking · Full class view</div></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-success btn-sm" id="btn-start-gest">▶ Start Camera</button>
+              <button class="btn btn-danger btn-sm" id="btn-stop-gest">⏹ Stop</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="cam-wrap" id="gest-cam-wrap" style="position:relative">
+              <video class="cam-feed" id="gest-vid" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
+              <canvas id="gest-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5"></canvas>
+              <div class="cam-overlay" id="gest-overlay">
+                <div class="cam-corner tl"></div><div class="cam-corner tr"></div>
+                <div class="cam-corner bl"></div><div class="cam-corner br"></div>
+                <div class="cam-bar"><div class="cam-bar-label" style="color:#f6ad55"><div class="cam-rec"></div>GESTURE LOGGING ACTIVE · FULL CLASS</div><div class="cam-conf">Teacher-controlled</div></div>
+              </div>
+            </div>
+            <div style="margin-top:14px">
+              <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Log a Gesture — Select student then click gesture:</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <select id="gest-student-select" style="font-size:13px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-2);color:var(--text);font-family:var(--font);min-width:180px">
+                  <option value="">Select student…</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" style="background:var(--brand-dim);color:var(--brand)" onclick="logGesture('raise')">✋ Raise Hand</button>
+                <button class="btn btn-ghost btn-sm" style="background:var(--green-dim);color:var(--green)" onclick="logGesture('thumbup')">👍 Thumbs Up</button>
+                <button class="btn btn-ghost btn-sm" style="background:var(--orange-dim);color:var(--orange)" onclick="logGesture('point')">☝️ Pointing</button>
+                <button class="btn btn-ghost btn-sm" style="background:var(--purple-dim);color:var(--purple)" onclick="logGesture('wave')">👋 Wave</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px">
+              <div class="cam-stat"><div style="font-size:22px">✋</div><div class="cam-stat-val" id="g-raise">0</div><div class="cam-stat-lbl">Raise Hand</div></div>
+              <div class="cam-stat"><div style="font-size:22px">👍</div><div class="cam-stat-val" id="g-thumbup">0</div><div class="cam-stat-lbl">Thumbs Up</div></div>
+              <div class="cam-stat"><div style="font-size:22px">☝️</div><div class="cam-stat-val" id="g-point">0</div><div class="cam-stat-lbl">Pointing</div></div>
+              <div class="cam-stat"><div style="font-size:22px">👋</div><div class="cam-stat-val" id="g-wave">0</div><div class="cam-stat-lbl">Wave</div></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Participation Ranking</div><div class="card-sub">By gesture count · This session</div></div>
+            <div class="card-body" id="gest-rank-body">
+              <div style="color:var(--text-3);font-size:13px;text-align:center;padding:20px 0">No gestures logged yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Gesture Event Log</div><div class="card-sub">Teacher-logged events this session</div></div>
+        <div class="tbl-scroll"><table><thead><tr><th>Timestamp</th><th>Student</th><th>Gesture</th><th>Section</th><th>Detection</th></tr></thead>
+        <tbody id="gest-log"><tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:28px">Start the camera — MediaPipe Hands will auto-detect gestures across the whole class</td></tr></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SENTIMENT ══ -->
+  <div class="page" id="page-sentiment">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Sentiment Analysis</div><div class="page-desc">Analyze student emotional states from facial recognition and text feedback.</div></div>
+      </div>
+      <div class="card mb-5">
+        <div class="card-header"><div class="card-title">Live Emotion Distribution</div><div class="card-sub">From face recognition · Current session</div></div>
+        <div class="card-body"><div class="emotion-grid" id="emotion-grid-live"></div></div>
+      </div>
+      <div class="g-main mb-5">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Text Sentiment Analyzer</div><div class="card-sub">Deep keyword + phrase analysis</div></div>
+          <div class="card-body">
+            <textarea class="sent-input" id="sent-input" placeholder="Type a student's response or feedback here…&#10;&#10;Examples:&#10;• 'I really don't understand recursion, it's confusing me'&#10;• 'The explanation was clear and I get it now!'"></textarea>
+            <div style="margin-top:10px">
+              <div style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px">Quick Examples</div>
+              <div class="preset-chips">
+                <span class="preset-chip" onclick="setPreset(this)">I finally understand this topic, it makes sense now!</span>
+                <span class="preset-chip" onclick="setPreset(this)">This is very confusing and I'm totally lost</span>
+                <span class="preset-chip" onclick="setPreset(this)">The pace is good but I need more examples</span>
+                <span class="preset-chip" onclick="setPreset(this)">Great lesson! Very helpful and clear</span>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:8px">
+              <button class="btn btn-primary" id="btn-analyze" style="flex:1;justify-content:center">🔍 Analyze Sentiment</button>
+              <button class="btn btn-ghost" onclick="el('sent-input').value='';el('sent-result').style.display='none'">Clear</button>
+            </div>
+            <div class="sent-result" id="sent-result" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Sentiment Over Time</div><div class="card-sub" id="sent-chart-sub">Updates on each analysis</div></div>
+          <div class="card-body chart-wrap" style="height:310px"><canvas id="chart-sent-live"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ LESSON SUMMARIZER ══ -->
+  <div class="page" id="page-summarizer">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Lesson Summarizer</div><div class="page-desc">AI-powered summarization via live microphone (Tagalog/English), PDF upload, or paste text. Outputs always in English.</div></div>
+      </div>
+      <div class="sum-mode-tabs">
+        <div class="sum-tab active" onclick="switchSumMode('mic')" id="sum-tab-mic">🎙️ Live Microphone</div>
+        <div class="sum-tab" onclick="switchSumMode('file')" id="sum-tab-file">📄 Upload PDF / PPT</div>
+        <div class="sum-tab" onclick="switchSumMode('text')" id="sum-tab-text">📝 Paste Text</div>
+      </div>
+      <!-- MIC PANEL -->
+      <div class="sum-panel active" id="sum-panel-mic">
+        <div class="card">
+          <div class="card-header"><div class="card-title">🎙️ Live Lecture Recording</div><div class="card-sub">Transcribes Tagalog/English speech and summarizes in English via AI</div></div>
+          <div class="card-body">
+            <div style="text-align:center;padding:20px 0">
+              <button class="mic-btn" id="mic-btn" onclick="toggleMic()">🎙️</button>
+              <div class="mic-status" id="mic-status">Click to start recording</div>
+              <div style="font-size:12px;color:var(--text-3);margin-top:6px" id="mic-timer-display"></div>
+            </div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:10px">Live Transcript</div>
+            <div class="transcript-box" id="mic-transcript">Transcript will appear here as you speak… (Tagalog and English both supported)</div>
+            <div class="sum-loading" id="mic-loading"><div class="sum-spinner"></div>Summarizing lecture with AI (Tagalog → English)…</div>
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button class="btn btn-primary" id="btn-summarize-mic" style="flex:1;justify-content:center" onclick="summarizeMic()" disabled>✨ Summarize Lesson</button>
+              <button class="btn btn-ghost btn-sm" onclick="clearMicTranscript()">🗑 Clear</button>
+            </div>
+            <div class="sum-result" id="mic-result"></div>
+          </div>
+        </div>
+      </div>
+      <!-- FILE PANEL -->
+      <div class="sum-panel" id="sum-panel-file">
+        <div class="card">
+          <div class="card-header"><div class="card-title">📄 PDF / PPT Summarizer</div><div class="card-sub">Real PDF text extraction via pdf.js — no more random text!</div></div>
+          <div class="card-body">
+            <div class="file-drop-zone" id="file-drop-zone" onclick="el('file-upload-input').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)">
+              <div class="drop-icon">📂</div>
+              <div class="drop-txt">Click to upload or drag &amp; drop</div>
+              <div class="drop-sub">Supports PDF files and text (.txt) — max 10MB</div>
+            </div>
+            <input type="file" id="file-upload-input" accept=".pdf,.txt" style="display:none" onchange="handleFileSelect(event)">
+            <div id="file-info" style="display:none;margin-top:12px;padding:12px 16px;background:var(--bg);border-radius:10px;border:1.5px solid var(--border);align-items:center;gap:12px">
+              <span style="font-size:24px" id="file-icon">📄</span>
+              <div style="flex:1"><div style="font-size:13px;font-weight:600" id="file-name"></div><div style="font-size:12px;color:var(--text-3)" id="file-size"></div></div>
+              <button class="btn btn-ghost btn-sm" onclick="clearFile()">✕</button>
+            </div>
+            <div class="sum-loading" id="file-loading"><div class="sum-spinner"></div>Extracting and summarizing PDF content…</div>
+            <div style="margin-top:14px">
+              <button class="btn btn-primary" id="btn-summarize-file" style="justify-content:center;width:100%" onclick="summarizeFile()" disabled>✨ Summarize Document</button>
+            </div>
+            <div class="sum-result" id="file-result"></div>
+          </div>
+        </div>
+      </div>
+      <!-- TEXT PANEL -->
+      <div class="sum-panel" id="sum-panel-text">
+        <div class="card">
+          <div class="card-header"><div class="card-title">📝 Paste &amp; Summarize</div><div class="card-sub">Paste lesson notes or text content to summarize</div></div>
+          <div class="card-body">
+            <textarea class="sent-input" id="text-input" placeholder="Paste your lesson text, notes, or any content here… (Tagalog/English both work)" style="min-height:180px"></textarea>
+            <div class="sum-loading" id="text-loading"><div class="sum-spinner"></div>Analyzing and summarizing…</div>
+            <div style="margin-top:14px;display:flex;gap:8px">
+              <button class="btn btn-primary" id="btn-summarize-text" style="flex:1;justify-content:center" onclick="summarizeText()">✨ Summarize Text</button>
+              <button class="btn btn-ghost" onclick="el('text-input').value=''">Clear</button>
+            </div>
+            <div class="sum-result" id="text-result"></div>
+          </div>
+        </div>
+      </div>
+      <!-- HISTORY -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header"><div class="card-title">📚 Summary History</div><div class="card-sub">Saved summaries from this session</div></div>
+        <div class="card-body" id="sum-history-body">
+          <div style="text-align:center;color:var(--text-3);font-size:13px;padding:20px">No summaries yet. Record or upload a lesson to get started.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ANALYTICS ══ -->
+  <div class="page" id="page-analytics">
+    <div class="page-content">
+      <div class="page-header">
+        <div><div class="page-title">Analytics Report</div><div class="page-desc" id="analytics-desc">Semester-wide performance overview</div></div>
+        <div class="page-actions"><button class="btn btn-primary btn-sm" onclick="exportSessionsCSV()">📥 Export CSV</button></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px">
+        <div class="card card-pad" style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Avg Attendance</div><div style="font-size:32px;font-weight:800;color:var(--green)" id="analytics-avg-att">—</div><div style="font-size:11.5px;color:var(--text-3);margin-top:4px" id="analytics-avg-att-sub">No sessions yet</div></div>
+        <div class="card card-pad" style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Avg Engagement</div><div style="font-size:32px;font-weight:800;color:var(--brand)" id="analytics-avg-eng">—</div><div style="font-size:11.5px;color:var(--text-3);margin-top:4px" id="analytics-avg-eng-sub">No sessions yet</div></div>
+        <div class="card card-pad" style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Total Gestures</div><div style="font-size:32px;font-weight:800;color:var(--orange)" id="analytics-total-gest">0</div><div style="font-size:11.5px;color:var(--text-3);margin-top:4px">All sessions</div></div>
+        <div class="card card-pad" style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Positive Mood</div><div style="font-size:32px;font-weight:800;color:var(--teal)" id="analytics-pos-mood">—</div><div style="font-size:11.5px;color:var(--text-3);margin-top:4px">Happy + Neutral</div></div>
+        <div class="card card-pad" style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Sessions Held</div><div style="font-size:36px;font-weight:800;color:var(--text)" id="analytics-sessions">0</div><div style="font-size:11.5px;color:var(--text-3);margin-top:4px">This semester</div></div>
+      </div>
+      <div class="g2 mb-5">
+        <div class="card"><div class="card-header"><div class="card-title">Attendance &amp; Engagement Trend</div><div class="card-sub">Per session</div></div><div class="card-body chart-wrap" style="height:230px"><canvas id="chart-trend"></canvas></div></div>
+        <div class="card"><div class="card-header"><div class="card-title">Gesture Frequency</div><div class="card-sub">All sessions cumulative</div></div><div class="card-body chart-wrap" style="height:230px"><canvas id="chart-gest-freq"></canvas></div></div>
+      </div>
+      <div class="card mb-5"><div class="card-header"><div class="card-title">Emotion Timeline</div><div class="card-sub">Per session</div></div><div class="card-body chart-wrap" style="height:230px"><canvas id="chart-emot-time"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- ══ SETTINGS ══ -->
+  <div class="page" id="page-settings">
+    <div class="page-content">
+      <div class="page-header"><div><div class="page-title">Settings</div><div class="page-desc">Configure class information, AI thresholds, and manage users.</div></div></div>
+      <div class="g2">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Class Information</div></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+              <div class="g2"><div class="field"><label>Subject Code</label><input id="cfg-code" value="CS301"></div><div class="field"><label>Active Section</label><select id="cfg-section-select" onchange="setActiveSection(this.value)"></select></div></div>
+              <div class="field"><label>Subject Name</label><input id="cfg-subject" value="Data Structures"></div>
+              <div class="field"><label>Instructor</label><input id="cfg-instructor" value="Prof. Maria Santos"></div>
+              <div class="g2"><div class="field"><label>Schedule</label><input id="cfg-schedule" value="MWF 8:00–10:00 AM"></div><div class="field"><label>Room</label><input id="cfg-room" value="Lab 301"></div></div>
+              <button class="btn btn-primary" style="justify-content:center" onclick="saveSettings()">💾 Save Changes</button>
+            </div>
+          </div>
+          <div class="card" id="admin-users-card">
+            <div class="card-header"><div class="card-title">User Accounts</div><div class="card-sub">Admin only · MySQL database</div></div>
+            <div class="card-body" id="users-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">📢 Announcements</div><div class="card-sub">Visible to students in their portal</div></div>
+            <div class="card-body" id="teacher-ann-panel"><p style="color:var(--text-3);font-size:13px">Loading…</p></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">📬 Student Feedback Inbox</div><div class="card-sub">Anonymous &amp; named submissions</div></div>
+            <div class="card-body" id="teacher-feedback-inbox"><p style="color:var(--text-3);font-size:13px">Loading…</p></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">AI Module Status</div></div>
+            <div class="card-body">
+              <div class="module-row"><div class="module-icon" style="background:var(--brand-dim)">👤</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600">Face Recognition</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">face-api.js · SSD MobileNet · FaceNet128</div></div><span class="badge" id="settings-face-status" style="background:var(--orange-dim);color:var(--orange)">⏳ Loading</span></div>
+              <div class="module-row"><div class="module-icon" style="background:var(--orange-dim)">✋</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600">Gesture Logging</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">Teacher-controlled · Full class view</div></div><span class="badge b-green">● Active</span></div>
+              <div class="module-row"><div class="module-icon" style="background:var(--purple-dim)">💬</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600">Sentiment Analysis</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">NLP keyword analysis · Client-side</div></div><span class="badge b-green">● Active</span></div>
+              <div class="module-row"><div class="module-icon" style="background:var(--teal-dim)">📝</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600">Lesson Summarizer</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">Ollama (local AI) · pdf.js · Tagalog→English</div></div><span class="badge b-green" id="ollama-status">● Checking…</span></div>
+              <div class="module-row"><div class="module-icon" style="background:var(--green-dim)">🔐</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600">Authentication</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">PHP + MySQL · XAMPP · bcrypt</div></div><span class="badge b-green">● Active</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">Detection Thresholds</div><div class="card-sub">Adjust AI sensitivity</div></div>
+            <div class="card-body">
+              <div class="slider-row"><div class="slider-lbl"><span class="slider-lbl-txt">Face Match Confidence</span><span class="slider-val" id="out-face">55%</span></div><input type="range" min="30" max="90" value="55" data-out="out-face" id="threshold-face"></div>
+              <div class="slider-row"><div class="slider-lbl"><span class="slider-lbl-txt">Emotion Detection Confidence</span><span class="slider-val" id="out-emot">80%</span></div><input type="range" min="50" max="99" value="80" data-out="out-emot"></div>
+              <div class="slider-row"><div class="slider-lbl"><span class="slider-lbl-txt">Low Engagement Alert</span><span class="slider-val" id="out-eng">40%</span></div><input type="range" min="20" max="70" value="40" data-out="out-eng"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">System Information</div></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:0">
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-2)"><span style="font-size:12.5px;font-weight:600;color:var(--text-3)">Version</span><span style="font-family:var(--mono);font-size:12.5px;color:var(--text-2)">SmartClass v2.1.0</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-2)"><span style="font-size:12.5px;font-weight:600;color:var(--text-3)">Auth Backend</span><span style="font-family:var(--mono);font-size:12.5px;color:var(--green)">PHP + MySQL · XAMPP</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-2)"><span style="font-size:12.5px;font-weight:600;color:var(--text-3)">Face Engine</span><span style="font-family:var(--mono);font-size:12.5px;color:var(--text-2)">face-api.js · @vladmandic 1.7.13</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-2)"><span style="font-size:12.5px;font-weight:600;color:var(--text-3)">Storage</span><span style="font-family:var(--mono);font-size:12.5px;color:var(--green)">localStorage · Enrolled data</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0"><span style="font-size:12.5px;font-weight:600;color:var(--text-3)">Enrolled Students</span><span style="font-family:var(--mono);font-size:12.5px;color:var(--brand)" id="settings-enrolled-count">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCRIPTS — load modules in dependency order
+     ═══════════════════════════════════════════════════════════════ -->
+<script src="js/face_engine.js"></script>   <!-- face-api wrappers, enrollment, recognition -->
+<script src="js/app.js"></script>            <!-- core: helpers, auth (MySQL), state, nav, sections, settings -->
+<script src="js/attendance.js"></script>     <!-- table, stats, CSV export -->
+<script src="js/gesture.js"></script>        <!-- camera, gesture logging, participation ranking -->
+<script src="js/sentiment.js"></script>      <!-- NLP analysis, emotion tiles, sentiment chart helpers -->
+<script src="js/charts.js"></script>         <!-- Chart.js dashboard, analytics, sentiment chart init -->
+<script src="js/summarizer.js"></script>     <!-- mic, PDF extraction, Claude AI summary, PDF download -->
+<script src="js/student.js"></script>        <!-- student portal: home, attendance, notes, feedback, profile -->
+
+</body>
+</html>
